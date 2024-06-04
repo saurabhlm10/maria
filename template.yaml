@@ -1,0 +1,110 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  maria
+
+  Sample SAM Template for maria
+
+Parameters:
+  InvincibleUrl:
+    Type: String
+    Description: Invincible(DB Service) Url
+  MariaQueueUrl:
+    Type: String
+    Description: Maria Queue Url
+  SQSExecutionRoleArn:
+    Type: String
+    Description: SQS Execution Role Arn
+  ApifyToken:
+    Type: String
+    Description: Apify Token
+  CloudinaryApiKey:
+    Type: String
+    Description: Cloudinary Api Key
+  CloudinaryApiSecret:
+    Type: String
+    Description: Cloudinary Api Secret
+  CloudinaryCloudName:
+    Type: String
+    Description: Cloudinary Cloud Name
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: nodejs18.x
+    Architectures:
+      - x86_64
+
+Resources:
+  AddDatasetIDToQueueFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/add-datasetID-to-queue/
+      Handler: addDatasetIDToQueueFunction.lambdaHandler
+      Role: !Ref SQSExecutionRoleArn
+      MemorySize: 1024
+      Events:
+        DatasetFromApify:
+          Type: Api
+          Properties:
+            Path: /webhook/datasetID
+            Method: post
+      Environment:
+        Variables:
+          InvincibleUrl: !Ref InvincibleUrl
+          MariaQueueUrl: !Ref MariaQueueUrl
+          SQSExecutionRoleArn: !Ref SQSExecutionRoleArn
+    Metadata: # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints:
+          - functions/addDatasetIDToQueueFunction.ts
+
+  AddPostsToDBFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/add-datasetID-to-queue/
+      Handler: addPostsToDB.lambdaHandler
+      Role: !Ref SQSExecutionRoleArn
+      MemorySize: 1024
+      # Events:
+      # MariaQueueTrigger:
+      #   Type: SQS
+      #   Properties:
+      #     Queue: !Ref MariaQueueUrl
+      #     BatchSize: 10
+      Environment:
+        Variables:
+          InvincibleUrl: !Ref InvincibleUrl
+          ApifyToken: !Ref ApifyToken
+          CloudinaryApiKey: !Ref CloudinaryApiKey
+          CloudinaryApiSecret: !Ref CloudinaryApiSecret
+          CloudinaryCloudName: !Ref CloudinaryCloudName
+    Metadata: # Manage esbuild properties
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints:
+          - functions/addPostsToDB.ts
+
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+
+  # HelloWorldFunctionIamRole:
+  #   Description: "Implicit IAM Role created for Hello World function"
+  #   Value: !GetAtt HelloWorldFunctionRole.Arn
+
+  AddDatasetIDToQueueApi:
+    Description: "API Gateway endpoint URL for Prod stage for AddDatasetIDToQueue function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/webhook/datasetID/"
+  AddDatasetIDToQueueFunction:
+    Description: "AddDatasetIDToQueue Lambda Function ARN"
+    Value: !GetAtt AddDatasetIDToQueueFunction.Arn
