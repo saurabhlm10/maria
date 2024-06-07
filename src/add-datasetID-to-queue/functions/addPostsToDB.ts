@@ -82,40 +82,107 @@ export const lambdaHandler = async (event: SQSEvent): Promise<APIGatewayProxyRes
 
         const createTempPostsInDBBody: {
             nicheId: string;
-            datasetId: string;
             posts: TempPostItem[];
         } = {
             nicheId,
-            datasetId,
             posts: [],
         };
 
+        // Upload videos and covers to cloud
         const uploadToCloudPromises = datasetItems.map(async (item) => {
-            const [media_url, cover_url] = await Promise.all([
+            const [mediaResult, coverResult] = await Promise.allSettled([
                 uploadToCloud(item.video.url),
                 uploadToCloud(item.video.cover),
             ]);
 
-            return { media_url, cover_url };
+            const media_url = mediaResult.status === 'fulfilled' ? mediaResult.value : null;
+            const cover_url = coverResult.status === 'fulfilled' ? coverResult.value : null;
+
+            return {
+                media_url,
+                cover_url,
+                mediaError: mediaResult.status === 'rejected' ? mediaResult.reason : null,
+                coverError: coverResult.status === 'rejected' ? coverResult.reason : null,
+            };
+        });
+        const result = await Promise.allSettled(uploadToCloudPromises);
+
+        const successfulUploads: { media_url: string; cover_url: string }[] = [];
+        const failedUploads = [];
+        const filteredDatasetItems: (TikTokVideo | null)[] = datasetItems.slice();
+
+        result.forEach((res, index) => {
+            if (res.status === 'fulfilled') {
+                // console.log('res.value', res.value);
+                if (res.value.media_url && res.value.cover_url) {
+                    successfulUploads.push({ media_url: res.value.media_url, cover_url: res.value.cover_url });
+                } else {
+                    console.log('res.value.mediaError');
+                    res.value.mediaError && console.log('Error uploading video: ', res.value.mediaError);
+                    res.value.coverError && console.log('Error uploading cover: ', res.value.coverError);
+                    filteredDatasetItems[index] = null;
+                }
+            } else {
+                console.log('index', index);
+                failedUploads.push({ item: datasetItems[index], reason: res.reason });
+                filteredDatasetItems[index] = null;
+            }
         });
 
-        const result = await Promise.all(uploadToCloudPromises);
+        filteredDatasetItems.forEach((item, i) => {
+            if (item) {
+                const uploadResult = result[i];
+                let media_url = null;
+                let cover_url = null;
 
-        datasetItems.forEach((item, i) => {
-            createTempPostsInDBBody.posts.push({
-                source_url: item.postPage,
-                originalViews: item.views,
-                source: 'tiktok',
-                video_url: item.video.url,
-                media_url: result[i].media_url,
-                cover_url: result[i].cover_url,
-                caption: item.title,
-            });
+                if (uploadResult.status === 'fulfilled') {
+                    media_url = uploadResult.value.media_url;
+                    cover_url = uploadResult.value.cover_url;
+                }
+
+                createTempPostsInDBBody.posts.push({
+                    source_url: item.postPage,
+                    originalViews: item.views,
+                    source: 'tiktok',
+                    video_url: item.video.url,
+                    media_url: media_url as string,
+                    cover_url: cover_url as string,
+                    caption: item.title,
+                });
+            }
         });
 
         const createTempPostsUrl = invincibleUrl + '/rawPosts';
 
         await apiHandler('post', createTempPostsUrl, createTempPostsInDBBody);
+
+        // Get Collection Page ID Using Name
+
+        const collectionPageName = datasetItems[0].channel.username;
+        const getCollectionPageUsingNameUrl = invincibleUrl + '/collectionIGPage/' + collectionPageName;
+
+        const collectionPage = await apiHandler('get', getCollectionPageUsingNameUrl);
+
+        const collectionPageId = collectionPage._id;
+
+        // Add Collection Page to completedCollectionPages
+        const addCollectionPageToCompletedCollectionPagesUrl =
+            invincibleUrl + '/collectionIGPage/add/completedCollectionPage';
+
+        const addCollectionPageToCompletedCollectionPagesBody = {
+            nicheId,
+            collectionPageId,
+        };
+
+        await apiHandler(
+            'put',
+            addCollectionPageToCompletedCollectionPagesUrl,
+            addCollectionPageToCompletedCollectionPagesBody,
+        );
+
+        // Check if Niche Post Collection is done
+
+        // If Niche Post Collection is done put it in vulcan queue
 
         return successReturn('Message received and stored posts in DB', event.Records);
     } catch (error) {
