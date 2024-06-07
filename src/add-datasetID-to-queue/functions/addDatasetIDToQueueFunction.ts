@@ -31,11 +31,10 @@ export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGat
         // Initiate & Store Status in DB
         const statusBody = {
             nicheId: data.nicheId,
-            datasetId: data.resource.defaultDatasetId,
         };
 
         const params = {
-            MessageBody: JSON.stringify(statusBody),
+            MessageBody: JSON.stringify({ ...statusBody, datasetId: data.resource.defaultDatasetId }),
             QueueUrl: queueUrl,
         };
 
