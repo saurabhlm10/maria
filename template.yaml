@@ -12,6 +12,9 @@ Parameters:
   MariaQueueUrl:
     Type: String
     Description: Maria Queue Url
+  VulcanQueueUrl:
+    Type: String
+    Description: Vulcan Queue Url
   SQSExecutionRoleArn:
     Type: String
     Description: SQS Execution Role Arn
@@ -54,6 +57,7 @@ Resources:
         Variables:
           InvincibleUrl: !Ref InvincibleUrl
           MariaQueueUrl: !Ref MariaQueueUrl
+          VulcanQueueUrl: !Ref VulcanQueueUrl
           SQSExecutionRoleArn: !Ref SQSExecutionRoleArn
     Metadata: # Manage esbuild properties
       BuildMethod: esbuild
@@ -80,6 +84,7 @@ Resources:
       Environment:
         Variables:
           InvincibleUrl: !Ref InvincibleUrl
+          VulcanQueueUrl: !Ref VulcanQueueUrl
           ApifyToken: !Ref ApifyToken
           CloudinaryApiKey: !Ref CloudinaryApiKey
           CloudinaryApiSecret: !Ref CloudinaryApiSecret

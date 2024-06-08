@@ -6,6 +6,7 @@ import { successReturn } from '../utils/successReturn.util';
 import CustomError from '../utils/CustomError.util';
 import { validate } from '../validator';
 import AWS from 'aws-sdk';
+import { getMonthAndYear } from '../helpers/getMonthAndYear';
 const sqs = new AWS.SQS();
 
 export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
@@ -29,8 +30,12 @@ export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGat
         if (!niche) throw new CustomError('No niche found', 404);
 
         // Initiate & Store Status in DB
+        const { month, year } = getMonthAndYear();
+
         const statusBody = {
             nicheId: data.nicheId,
+            month,
+            year,
         };
 
         const params = {

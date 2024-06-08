@@ -4,6 +4,9 @@ import { successReturn } from '../utils/successReturn.util';
 import axios from 'axios';
 import { apiHandler } from '../utils/apiHandler.util';
 import { uploadToCloud } from '../utils/uploadToCloud.util';
+import AWS from 'aws-sdk';
+import { getMonthAndYear } from '../helpers/getMonthAndYear';
+const sqs = new AWS.SQS();
 
 interface Message {
     nicheId: string;
@@ -64,6 +67,7 @@ interface TempPostItem {
 
 export const lambdaHandler = async (event: SQSEvent): Promise<APIGatewayProxyResult> => {
     const invincibleUrl = process.env.InvincibleUrl;
+    const vulcanQueueUrl = process.env.VulcanQueueUrl || '';
     try {
         const message = JSON.parse(event.Records[0].body) as Message;
 
@@ -80,11 +84,17 @@ export const lambdaHandler = async (event: SQSEvent): Promise<APIGatewayProxyRes
 
         const datasetItems: TikTokVideo[] = response.data;
 
+        const { month, year } = getMonthAndYear();
+
         const createTempPostsInDBBody: {
             nicheId: string;
+            month: string;
+            year: string;
             posts: TempPostItem[];
         } = {
             nicheId,
+            month,
+            year,
             posts: [],
         };
 
@@ -113,17 +123,14 @@ export const lambdaHandler = async (event: SQSEvent): Promise<APIGatewayProxyRes
 
         result.forEach((res, index) => {
             if (res.status === 'fulfilled') {
-                // console.log('res.value', res.value);
                 if (res.value.media_url && res.value.cover_url) {
                     successfulUploads.push({ media_url: res.value.media_url, cover_url: res.value.cover_url });
                 } else {
-                    console.log('res.value.mediaError');
                     res.value.mediaError && console.log('Error uploading video: ', res.value.mediaError);
                     res.value.coverError && console.log('Error uploading cover: ', res.value.coverError);
                     filteredDatasetItems[index] = null;
                 }
             } else {
-                console.log('index', index);
                 failedUploads.push({ item: datasetItems[index], reason: res.reason });
                 filteredDatasetItems[index] = null;
             }
@@ -171,6 +178,8 @@ export const lambdaHandler = async (event: SQSEvent): Promise<APIGatewayProxyRes
 
         const addCollectionPageToCompletedCollectionPagesBody = {
             nicheId,
+            month,
+            year,
             collectionPageId,
         };
 
@@ -181,8 +190,20 @@ export const lambdaHandler = async (event: SQSEvent): Promise<APIGatewayProxyRes
         );
 
         // Check if Niche Post Collection is done
+        const nichePostCollectionIsDoneUrl =
+            invincibleUrl + '/NicheApifyDatasetStatus/checkNichePostCollection/' + nicheId + '/' + month + '/' + year;
+        const nichePostCollectionIsDoneResponse = await apiHandler('get', nichePostCollectionIsDoneUrl);
 
         // If Niche Post Collection is done put it in vulcan queue
+
+        if (nichePostCollectionIsDoneResponse.completed) {
+            const params = {
+                MessageBody: JSON.stringify({ nicheId }),
+                QueueUrl: vulcanQueueUrl,
+            };
+
+            const queueMessage = await sqs.sendMessage(params).promise();
+        }
 
         return successReturn('Message received and stored posts in DB', event.Records);
     } catch (error) {
