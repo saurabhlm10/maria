@@ -6,6 +6,7 @@ import { apiHandler } from '../utils/apiHandler.util';
 import { uploadToCloud } from '../utils/uploadToCloud.util';
 import AWS from 'aws-sdk';
 import { getMonthAndYear } from '../helpers/getMonthAndYear';
+import { ENV } from '../constants';
 const sqs = new AWS.SQS();
 
 interface Message {
@@ -63,11 +64,16 @@ interface TempPostItem {
     cover_url: string;
     media_url: string;
     caption: string;
+    originalVideoPublishSchedule: {
+        month: string;
+        year: number;
+    };
 }
 
 export const lambdaHandler = async (event: SQSEvent): Promise<APIGatewayProxyResult> => {
     const invincibleUrl = process.env.InvincibleUrl;
     const vulcanQueueUrl = process.env.VulcanQueueUrl || '';
+    const { months } = ENV;
     try {
         const message = JSON.parse(event.Records[0].body) as Message;
 
@@ -155,6 +161,10 @@ export const lambdaHandler = async (event: SQSEvent): Promise<APIGatewayProxyRes
                     media_url: media_url as string,
                     cover_url: cover_url as string,
                     caption: item.title,
+                    originalVideoPublishSchedule: {
+                        month: months[new Date(item.uploadedAt * 1000).getMonth()],
+                        year: new Date(item.uploadedAt * 1000).getFullYear(),
+                    },
                 });
             }
         });
@@ -202,7 +212,7 @@ export const lambdaHandler = async (event: SQSEvent): Promise<APIGatewayProxyRes
                 QueueUrl: vulcanQueueUrl,
             };
 
-            const queueMessage = await sqs.sendMessage(params).promise();
+            await sqs.sendMessage(params).promise();
         }
 
         return successReturn('Message received and stored posts in DB', event.Records);
